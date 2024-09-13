@@ -1,0 +1,47 @@
+.{
+    // This is the default name used by packages depending on this one. For
+    // example, when a user runs `zig fetch --save <url>`, this field is used
+    // as the key in the `dependencies` table. Although the user can choose a
+    // different name, most users will stick with this provided value.
+    //
+    // It is redundant to include "zig" in this name because it is already
+    // within the Zig package namespace.
+    .name = "voxel-engine",
+
+    // This is a [Semantic Version](https://semver.org/).
+    // In a future version of Zig it will be used for package deduplication.
+    .version = "0.0.0",
+
+    // This field is optional.
+    // This is currently advisory only; Zig does not yet do anything
+    // with this value.
+    .minimum_zig_version = "0.13.0",
+
+    // This field is optional.
+    // Each dependency must either provide a `url` and `hash`, or a `path`.
+    // `zig build --fetch` can be used to fetch all dependencies of a package, recursively.
+    // Once all dependencies are fetched, `zig build` no longer requires
+    // internet connectivity.
+    .dependencies = .{
+        .vulkan_headers = .{
+            .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/vulkan-sdk-1.3.290.0.tar.gz",
+            .hash = "1220a11136d20a5580bac95fd7a4ed4f1c50c3e37a90350fa45334e0c2062008ce6c",
+        },
+        .vulkan_wrappers = .{
+            .url = "https://github.com/Snektron/vulkan-zig/archive/zig-0.13-compat.tar.gz",
+            .hash = "12208958f173b8b81bfac797955f0416ab38b21d1f69d4ebf6c7ca460a828a41cd45",
+        },
+        .sdl_wrappers = .{
+            .url = "https://github.com/ikskuh/SDL.zig/archive/fac81ec499cfd64da7b846de27f6db4a0d4943bf.tar.gz",
+            .hash = "12206c3d312175cf6a1bf1e8247ace5ac49ed8be80a94d8857d7d41fd7d1aee7ac4b",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "README.md",
+        // For example...
+        //"LICENSE",
+    },
+}
