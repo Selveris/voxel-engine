@@ -29,7 +29,7 @@ pub fn VecN(comptime T: type, comptime size: usize) type {
     return struct {
         inner: [size]T,
 
-        pub fn create(values: [size]T) VecN(T, size) {
+        pub fn from(values: [size]T) VecN(T, size) {
             return .{ .inner = values };
         }
 
@@ -51,7 +51,7 @@ pub fn VecN(comptime T: type, comptime size: usize) type {
             for (0..size) |i| {
                 new[i] = self.inner[i] + other.inner[i];
             }
-            return create(new);
+            return from(new);
         }
         pub fn sub(self: VecN(T, size), other: VecN(T, size)) VecN(T, size) {
             switch (@typeInfo(T)) {
@@ -66,14 +66,14 @@ pub fn VecN(comptime T: type, comptime size: usize) type {
             for (0..size) |i| {
                 new[i] = self.inner[i] - other.inner[i];
             }
-            return create(new);
+            return from(new);
         }
         pub fn mul(self: VecN(T, size), scalar: T) VecN(T, size) {
             var new: [size]T = undefined;
             for (0..size) |i| {
                 new[i] = self.inner[i] * scalar;
             }
-            return create(new);
+            return from(new);
         }
         pub fn dot(self: VecN(T, size), other: VecN(T, size)) T {
             var product: T = 0;
@@ -96,9 +96,9 @@ test "Vec succeeds with number type" {
 }
 
 test "Vec of different size or type are not equals" {
-    const vu4 = VecN(u8, 4).create(.{ 1, 2, 3, 4 });
-    const vu3 = VecN(u8, 3).create(.{ 1, 2, 3 });
-    const vi4 = VecN(i8, 4).create(.{ -1, -2, -3, -4 });
+    const vu4 = VecN(u8, 4).from(.{ 1, 2, 3, 4 });
+    const vu3 = VecN(u8, 3).from(.{ 1, 2, 3 });
+    const vi4 = VecN(i8, 4).from(.{ -1, -2, -3, -4 });
 
     try expect(@TypeOf(vu4) != @TypeOf(vu3));
     try expect(@TypeOf(vi4) != @TypeOf(vu4));
@@ -112,38 +112,38 @@ test "Vec2 is same type as VecN(.., 2)" {
 }
 
 test "Add with same size succeeds" {
-    const v1 = VecN(i8, 3).create(.{ 1, 2, 3 });
-    const v2 = VecN(i8, 3).create(.{ -1, -2, -3 });
+    const v1 = VecN(i8, 3).from(.{ 1, 2, 3 });
+    const v2 = VecN(i8, 3).from(.{ -1, -2, -3 });
 
     try expectEqual(.{ 0, 0, 0 }, v1.add(v2).inner);
 }
 
 test "sub with same size succeeds" {
-    const v1 = VecN(f16, 3).create(.{ 1, 2, 3 });
-    const v2 = VecN(f16, 3).create(.{ 1, 2, 3 });
+    const v1 = VecN(f16, 3).from(.{ 1, 2, 3 });
+    const v2 = VecN(f16, 3).from(.{ 1, 2, 3 });
 
     try expectEqual(.{ 0, 0, 0 }, v1.sub(v2).inner);
 }
 
 test "mul succeeds" {
-    const v2f = Vec2(f16).create(.{ 1.1, 2.2 });
-    const v3u = Vec3(u8).create(.{ 1, 2, 3 });
+    const v2f = Vec2(f16).from(.{ 1.1, 2.2 });
+    const v3u = Vec3(u8).from(.{ 1, 2, 3 });
 
     try expectEqual(.{ -2.2, -4.4 }, v2f.mul(-2).inner);
     try expectEqual(.{ 2, 4, 6 }, v3u.mul(2).inner);
 }
 
 test "dot product succeeds" {
-    const v3a = Vec3(i8).create(.{ 1, 3, -5 });
-    const v3b = Vec3(i8).create(.{ 4, -2, -1 });
+    const v3a = Vec3(i8).from(.{ 1, 3, -5 });
+    const v3b = Vec3(i8).from(.{ 4, -2, -1 });
 
     try expectEqual(3, v3a.dot(v3b));
 }
 
 test "accessors succeed" {
-    const v2 = Vec2(u8).create(.{ 1, 2 });
-    const v3 = Vec3(f16).create(.{ 1, 2, 3.3 });
-    const v5 = VecN(i8, 5).create(.{ -1, -2, -3, -4, -5 });
+    const v2 = Vec2(u8).from(.{ 1, 2 });
+    const v3 = Vec3(f16).from(.{ 1, 2, 3.3 });
+    const v5 = VecN(i8, 5).from(.{ -1, -2, -3, -4, -5 });
 
     try expectEqual(1, v2.x());
     try expectEqual(2, v2.y());

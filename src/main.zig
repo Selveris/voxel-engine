@@ -1,19 +1,37 @@
 const std = @import("std");
+const sdl = @import("sdl2");
+const vk = @import("vulkan");
+const loader = @import("obj_loader.zig");
 
 pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+    // var window = try sdl.createWindow(
+    //     "SDL2 Wrapper Demo",
+    //     .{ .centered = {} },
+    //     .{ .centered = {} },
+    //     640,
+    //     480,
+    //     .{ .vis = .shown },
+    // );
+    // defer window.destroy();
 
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
+    // var renderer = try sdl.createRenderer(window, null, .{ .accelerated = true });
+    // defer renderer.destroy();
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
+    // mainLoop: while (true) {
+    //     while (sdl.pollEvent()) |ev| {
+    //         switch (ev) {
+    //             .quit => break :mainLoop,
+    //             else => {},
+    //         }
+    //     }
 
-    try bw.flush(); // don't forget to flush!
+    //     try renderer.setColorRGB(0xF7, 0xA4, 0x1D);
+    //     try renderer.clear();
+
+    //     renderer.present();
+    // }
+
+    loader.load_obj("test");
 }
 
 test "simple test" {
