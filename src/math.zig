@@ -32,6 +32,12 @@ pub fn VecN(comptime T: type, comptime size: usize) type {
         pub fn from(values: [size]T) VecN(T, size) {
             return .{ .inner = values };
         }
+        pub fn fromSliceAssertSize(values: []const T) VecN(T, size) {
+            std.debug.assert(values.len == size);
+            var inner: [size]T = undefined;
+            std.mem.copyForwards(T, &inner, values);
+            return .{ .inner = inner };
+        }
 
         pub fn x(self: VecN(T, size)) T {
             return self.inner[0];
@@ -94,7 +100,6 @@ test "Vec succeeds with number type" {
     _ = VecN(i8, 4);
     _ = VecN(f16, 4);
 }
-
 test "Vec of different size or type are not equals" {
     const vu4 = VecN(u8, 4).from(.{ 1, 2, 3, 4 });
     const vu3 = VecN(u8, 3).from(.{ 1, 2, 3 });
@@ -103,12 +108,19 @@ test "Vec of different size or type are not equals" {
     try expect(@TypeOf(vu4) != @TypeOf(vu3));
     try expect(@TypeOf(vi4) != @TypeOf(vu4));
 }
-
 test "Vec2 is same type as VecN(.., 2)" {
     const v2i = Vec2(i8);
     const vni = VecN(i8, 2);
 
     try expect(@TypeOf(v2i) == @TypeOf(vni));
+}
+
+test "Vec can be created from slice" {
+    const array: [3]u8 = .{ 1, 2, 3 };
+    const slice = array[0..];
+    const v3 = Vec3(u8).fromSliceAssertSize(slice);
+
+    try expectEqual(.{ 1, 2, 3 }, v3.inner);
 }
 
 test "Add with same size succeeds" {
@@ -117,14 +129,12 @@ test "Add with same size succeeds" {
 
     try expectEqual(.{ 0, 0, 0 }, v1.add(v2).inner);
 }
-
 test "sub with same size succeeds" {
     const v1 = VecN(f16, 3).from(.{ 1, 2, 3 });
     const v2 = VecN(f16, 3).from(.{ 1, 2, 3 });
 
     try expectEqual(.{ 0, 0, 0 }, v1.sub(v2).inner);
 }
-
 test "mul succeeds" {
     const v2f = Vec2(f16).from(.{ 1.1, 2.2 });
     const v3u = Vec3(u8).from(.{ 1, 2, 3 });
@@ -132,14 +142,12 @@ test "mul succeeds" {
     try expectEqual(.{ -2.2, -4.4 }, v2f.mul(-2).inner);
     try expectEqual(.{ 2, 4, 6 }, v3u.mul(2).inner);
 }
-
 test "dot product succeeds" {
     const v3a = Vec3(i8).from(.{ 1, 3, -5 });
     const v3b = Vec3(i8).from(.{ 4, -2, -1 });
 
     try expectEqual(3, v3a.dot(v3b));
 }
-
 test "accessors succeed" {
     const v2 = Vec2(u8).from(.{ 1, 2 });
     const v3 = Vec3(f16).from(.{ 1, 2, 3.3 });

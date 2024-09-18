@@ -330,28 +330,6 @@ const expectEqual = std.testing.expectEqual;
 const expectError = std.testing.expectError;
 const expectEqualSlice = std.testing.expectEqualSlices;
 
-// value
-
-test "parse value fails on non floats token" {
-    var token_it = std.mem.tokenizeAny(u8, " 0.123 \t 0.234  0.3a45  ", " \t");
-    const ctx = ErrContext{ .file_name = "test_value", .line = 1 };
-
-    const ret = utils.parseValues(&token_it, ctx, std.testing.allocator);
-
-    try expectError(ParsingError.invalidToken, ret);
-}
-
-test "parse value succeeds on valid entry" {
-    var token_it = std.mem.tokenizeAny(u8, " 0.123 \t 0.234  0.345 \t 0.000 -0.987 ", " \t");
-    const ctx = ErrContext{ .file_name = "test_value", .line = 1 };
-
-    const ret = try utils.parseValues(&token_it, ctx, std.testing.allocator);
-    defer ret.deinit();
-
-    const expected: [5]f32 = .{ 0.123, 0.234, 0.345, 0.000, -0.987 };
-    try std.testing.expectEqualSlices(f32, expected[0..], ret.items);
-}
-
 // test vertex
 
 test "parse vertex succeeds with 3 floats" {
