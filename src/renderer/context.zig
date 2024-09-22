@@ -1,6 +1,8 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const sdl = @import("sdl2");
 const vk = @import("vulkan");
+
 const vk_api = @import("vulkan_api.zig");
 const window = @import("window.zig");
 
@@ -34,6 +36,7 @@ pub const VkContext = struct {
     pdev: vk.PhysicalDevice,
     props: vk.PhysicalDeviceProperties,
     mem_props: vk.PhysicalDeviceMemoryProperties,
+    debug_messenger: vk.DebugUtilsMessengerEXT,
 
     dev: vk.Device,
     graphics_queue: Queue,
@@ -53,6 +56,9 @@ pub const VkContext = struct {
             return VkContextError.Instance;
         };
         logger.info("Vulkan: successfully initialized instance for app '{s}'", .{app_name});
+        if (builtin.mode == .Debug) {
+            self.init_debugger();
+        }
 
         self.vki = try vk_api.InstanceDispatch.load(self.instance, self.vkb.dispatch.vkGetInstanceProcAddr);
         errdefer self.vki.destroyInstance(self.instance, self.vk_allocator);
@@ -81,6 +87,7 @@ pub const VkContext = struct {
     pub fn deinit(self: VkContext) void {
         self.vkd.destroyDevice(self.dev, null);
         self.vki.destroySurfaceKHR(self.instance, self.surface, null);
+        // TODO: deinit debugger messenger
         self.vki.destroyInstance(self.instance, null);
     }
 
@@ -153,7 +160,7 @@ pub const VkContext = struct {
                 }
             }
         }
-        if (@import("builtin").mode == .Debug) {
+        if (builtin.mode == .Debug) {
             try exts.append(vk.extensions.ext_debug_utils.name);
         }
 
@@ -167,7 +174,7 @@ pub const VkContext = struct {
         var layers = try std.ArrayList([*:0]const u8).initCapacity(tmp_allocator, optional_instance_layers.len);
         layers.appendSliceAssumeCapacity(&optional_instance_layers);
         const layer_props = try self.vkb.enumerateInstanceLayerPropertiesAlloc(tmp_allocator);
-        if (@import("builtin").mode == .Debug) {
+        if (builtin.mode == .Debug) {
             try layers.append("VK_LAYER_KHRONOS_validation");
         }
         var count = layers.items.len;
@@ -190,6 +197,36 @@ pub const VkContext = struct {
         if (layers.items.len > 0) {
             instance_info.enabled_layer_count = @intCast(layers.items.len);
             instance_info.pp_enabled_layer_names = @ptrCast(layers.items);
+        }
+    }
+
+    fn init_debugger(self: *VkContext) void {
+        const log_severity: vk.DebugUtilsMessageSeverityFlagsEXT = .{
+            .error_bit_ext = true,
+            .warning_bit_ext = true,
+        };
+        const log_type: vk.DebugUtilsMessageTypeFlagsEXT = .{
+            .general_bit_ext = true,
+            .performance_bit_ext = true,
+            .validation_bit_ext = true,
+        };
+        const debug_info = vk.DebugUtilsMessengerCreateInfoEXT{
+            .message_severity = log_severity,
+            .message_type = log_type,
+            .pfn_user_callback = vk_debug_callback,
+        };
+        const pfn: ?vk.PfnCreateDebugUtilsMessengerEXT = @ptrCast(self.vkb.getInstanceProcAddr(self.instance, "vkCreateDebugUtilsMessengerEXT"));
+        if (pfn == null) {
+            logger.err("Vulkan: did not found PFN for CreateDebugUtilsMessengerEXT", .{});
+        }
+        const res = pfn.?(self.instance, &debug_info, self.vk_allocator, &self.debug_messenger);
+        switch (res) {
+            vk.Result.success => {
+                logger.info("Vulkan: successfully created debugger", .{});
+            },
+            else => |err| {
+                logger.warn("Vulkan: failed to initialize debbuger: {any}", .{err});
+            },
         }
     }
 };
@@ -399,4 +436,33 @@ fn checkExtensionSupport(
     }
 
     return true;
+}
+
+fn vk_debug_callback(severity: vk.DebugUtilsMessageSeverityFlagsEXT, types: vk.DebugUtilsMessageTypeFlagsEXT, callback_data: ?*const vk.DebugUtilsMessengerCallbackDataEXT, user_data: ?*anyopaque) callconv(.C) vk.Bool32 {
+    _ = user_data;
+    if (callback_data == null) return vk.FALSE;
+
+    var log_context: []const u8 = undefined;
+    if (types.general_bit_ext) {
+        log_context = "vulkan-general";
+    } else if (types.validation_bit_ext) {
+        log_context = "vulkan-validation";
+    } else if (types.performance_bit_ext) {
+        log_context = "vulkan-performance";
+    } else {
+        log_context = "vulkan-unknown-source";
+    }
+    const format = "{s}: {s}";
+    const args = .{ log_context, callback_data.?.p_message.? };
+    if (severity.error_bit_ext) {
+        logger.err(format, args);
+    } else if (severity.warning_bit_ext) {
+        logger.warn(format, args);
+    } else if (severity.info_bit_ext) {
+        logger.info(format, args);
+    } else if (severity.verbose_bit_ext) {
+        logger.debug(format, args);
+    }
+
+    return vk.FALSE;
 }
