@@ -1,6 +1,7 @@
 const std = @import("std");
 const sdl = @import("sdl2");
-const vk = @import("vulkan");
+const vk_context = @import("renderer/context.zig");
+const display = @import("./renderer/window.zig");
 
 const App = struct {
     window: sdl.Window,
@@ -13,9 +14,13 @@ const App = struct {
             .{ .centered = {} },
             width,
             height,
-            .{ .vis = .shown },
+            .{ .vis = .shown, .context = .vulkan },
         );
         errdefer window.destroy();
+
+        var sdl_display = display.SdlDisplay{ .window = window };
+        _ = try vk_context.VkContext.init(null, "Spoc", sdl_display.AsWindowDisplay());
+
         const renderer = try sdl.createRenderer(window, null, .{ .accelerated = true });
         try renderer.setColorRGB(0x06, 0x1a, 0x20);
 
@@ -42,6 +47,8 @@ const App = struct {
 };
 
 pub fn main() !void {
+    try sdl.init(sdl.InitFlags{ .events = true, .video = true });
+    defer sdl.quit();
     var app = try App.init(920, 680);
 
     try app.run();
