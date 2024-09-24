@@ -10,10 +10,32 @@ const device_requirement: PhysicalDeviceRequirement = .{
     .transfer = true,
     .extensions = &.{vk.extensions.khr_swapchain.name},
 };
+const device_optional_extensions = [_][*:0]const u8{};
 
 pub const DeviceError = error{
     NoSuitableDevice,
 };
+
+pub fn getQueueCreateInfo(allocator: std.mem.Allocator, qinfo: QueueInfo) ![]vk.DeviceQueueCreateInfo {
+    const queue_count = try allocator.alloc(u32, qinfo.family_count);
+    @memset(queue_count, 0);
+    if (qinfo.compute_family.items.len > 0) queue_count[qinfo.compute_family.items[0]] += 1;
+    if (qinfo.graphics_family.items.len > 0) queue_count[qinfo.graphics_family.items[0]] += 1;
+    if (qinfo.present_family.items.len > 0) queue_count[qinfo.present_family.items[0]] += 1;
+    if (qinfo.transfer_family.items.len > 0) queue_count[qinfo.transfer_family.items[0]] += 1;
+
+    var queue_create_info = std.ArrayList(vk.DeviceQueueCreateInfo).init(allocator);
+    for (queue_count, 0..) |count, index| {
+        if (count == 0) continue;
+        try queue_create_info.append(.{
+            .flags = .{},
+            .queue_family_index = @intCast(index),
+            .queue_count = count,
+            .p_queue_priorities = &.{1.0},
+        });
+    }
+    return queue_create_info.items;
+}
 
 pub fn selectPhysicalDevice(allocator: std.mem.Allocator, context: ctx.VkContext) !DeviceCandidate {
     const pdevs = try context.vki.enumeratePhysicalDevicesAlloc(context.instance, allocator);
@@ -31,16 +53,17 @@ pub fn selectPhysicalDevice(allocator: std.mem.Allocator, context: ctx.VkContext
         const queues_info = try constructQueuesInfo(allocator, pdev, queues_properties, context);
         const exts = try context.vki.enumerateDeviceExtensionPropertiesAlloc(pdev, null, allocator);
 
-        const candidate: DeviceCandidate = .{
+        var candidate: DeviceCandidate = .{
             .pdev = pdev,
             .props = properties,
-            .exts = exts,
+            .exts = std.ArrayList([*:0]const u8).init(allocator),
             .queues = queues_info,
         };
-        if (deviceMeetRequirements(candidate)) {
+        if (try deviceMeetRequirements(&candidate, exts)) {
             try candidates.append(candidate);
             logger.debug("Vulkan: device '{s}' meets requirements", .{properties.device_name});
         }
+        try addDeviceOptionalExtensions(&candidate, exts);
     }
     if (candidates.items.len == 0) {
         logger.err("Vulkan: no suitable physical device has been found", .{});
@@ -51,11 +74,11 @@ pub fn selectPhysicalDevice(allocator: std.mem.Allocator, context: ctx.VkContext
 }
 
 fn constructQueuesInfo(allocator: std.mem.Allocator, pdev: vk.PhysicalDevice, qprops: []vk.QueueFamilyProperties, context: ctx.VkContext) !QueueInfo {
-    var queues_info = QueueInfo.init(allocator);
+    var queues_info = QueueInfo.init(allocator, qprops.len);
     errdefer queues_info.deinit();
 
     for (qprops, 0..) |props, i| {
-        queues_info.total_queues_count += props.queue_count;
+        queues_info.queues_count += props.queue_count;
         if (props.queue_flags.graphics_bit) {
             try queues_info.graphics_family.append(@intCast(i));
         }
@@ -82,12 +105,13 @@ fn constructQueuesInfo(allocator: std.mem.Allocator, pdev: vk.PhysicalDevice, qp
     return queues_info;
 }
 
-fn deviceMeetRequirements(candidate: DeviceCandidate) bool {
+fn deviceMeetRequirements(candidate: *DeviceCandidate, exts: []vk.ExtensionProperties) !bool {
     for (device_requirement.extensions) |req_ext| {
-        for (candidate.exts) |ext| {
+        for (exts) |ext| {
             const len = std.mem.indexOfScalar(u8, &ext.extension_name, 0).?;
             const ext_name = ext.extension_name[0..len];
             if (std.mem.eql(u8, std.mem.span(req_ext), ext_name)) {
+                try candidate.exts.append(req_ext);
                 break;
             }
         } else {
@@ -101,13 +125,24 @@ fn deviceMeetRequirements(candidate: DeviceCandidate) bool {
     return true;
 }
 
+fn addDeviceOptionalExtensions(candidate: *DeviceCandidate, eprops: []vk.ExtensionProperties) !void {
+    for (device_optional_extensions) |extension_name| {
+        for (eprops) |prop| {
+            if (std.mem.eql(u8, prop.extension_name[0..prop.extension_name.len], std.mem.span(extension_name))) {
+                try candidate.exts.append(extension_name);
+                break;
+            }
+        }
+    }
+}
+
 fn pickDeviceCandidate(candidates: []DeviceCandidate) DeviceCandidate {
     var max_count: usize = 0;
     var selected: usize = 0;
 
     for (candidates, 0..) |candidate, i| {
-        if (candidate.queues.total_queues_count > max_count) {
-            max_count = candidate.queues.total_queues_count;
+        if (candidate.queues.queues_count > max_count) {
+            max_count = candidate.queues.queues_count;
             selected = i;
         }
     }
@@ -126,7 +161,7 @@ const PhysicalDeviceRequirement = struct {
 pub const DeviceCandidate = struct {
     pdev: vk.PhysicalDevice,
     props: vk.PhysicalDeviceProperties,
-    exts: []vk.ExtensionProperties,
+    exts: std.ArrayList([*:0]const u8),
     queues: QueueInfo,
 };
 
@@ -135,14 +170,16 @@ pub const QueueInfo = struct {
     present_family: std.ArrayList(u32),
     compute_family: std.ArrayList(u32),
     transfer_family: std.ArrayList(u32),
-    total_queues_count: usize = 0,
+    queues_count: usize = 0,
+    family_count: usize = 0,
 
-    fn init(allocator: std.mem.Allocator) QueueInfo {
+    fn init(allocator: std.mem.Allocator, family_count: usize) QueueInfo {
         return .{
             .graphics_family = std.ArrayList(u32).init(allocator),
             .present_family = std.ArrayList(u32).init(allocator),
             .compute_family = std.ArrayList(u32).init(allocator),
             .transfer_family = std.ArrayList(u32).init(allocator),
+            .family_count = family_count,
         };
     }
     fn deinit(self: *QueueInfo) void {
