@@ -6,6 +6,7 @@ const display = @import("./renderer/window.zig");
 const App = struct {
     window: sdl.Window,
     renderer: sdl.Renderer,
+    context: vk_context.VkContext,
 
     fn init(width: usize, height: usize) !App {
         var window = try sdl.createWindow(
@@ -19,14 +20,20 @@ const App = struct {
         errdefer window.destroy();
 
         var sdl_display = display.SdlDisplay{ .window = window };
-        _ = try vk_context.VkContext.init(null, "Spoc", sdl_display.AsWindowDisplay());
+        const context = try vk_context.VkContext.init(null, "Spoc", sdl_display.AsWindowDisplay());
+        errdefer context.deinit();
 
         const renderer = try sdl.createRenderer(window, null, .{ .accelerated = true });
         try renderer.setColorRGB(0x06, 0x1a, 0x20);
 
-        return App{ .window = window, .renderer = renderer };
+        return App{
+            .window = window,
+            .renderer = renderer,
+            .context = context,
+        };
     }
     fn deinit(self: *App) void {
+        self.context.deinit();
         self.renderer.destroy();
         self.window.destroy();
     }

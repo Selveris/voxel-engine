@@ -6,6 +6,7 @@ const vk = @import("vulkan");
 const vk_api = @import("vulkan_api.zig");
 const window = @import("window.zig");
 const dev = @import("device.zig");
+const swpc = @import("swapchain.zig");
 
 const logger = std.log.scoped(.context);
 
@@ -15,6 +16,7 @@ const optional_instance_extensions = [_][*:0]const u8{
 const optional_instance_layers = [_][*:0]const u8{
     "VK_LAYER_NV_optimus",
 };
+const swapchain_max_frames: usize = 3;
 
 pub const VkContextError = error{
     OutOfMemory,
@@ -35,12 +37,16 @@ pub const VkContext = struct {
     mem_props: vk.PhysicalDeviceMemoryProperties,
     debug_messenger: vk.DebugUtilsMessengerEXT,
 
-    device_info: dev.DeviceCandidate,
     dev: vk.Device,
+    device_info: dev.DeviceCandidate,
     graphics_queue: vk.Queue,
     present_queue: vk.Queue,
     compute_queue: vk.Queue,
     transfer_queue: vk.Queue,
+
+    swapchain: swpc.Swapchain(swapchain_max_frames),
+    frame_width: u32,
+    frame_height: u32,
 
     pub fn init(allocator: ?*const vk.AllocationCallbacks, app_name: [*:0]const u8, display: window.WindowDisplay) !VkContext {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -105,10 +111,19 @@ pub const VkContext = struct {
         }
         logger.info("Vulkan: queues handles successfully obtained", .{});
 
+        var swapchain_support: swpc.SwapchainSupport = undefined;
+        swapchain_support.capabilities = try self.vki.getPhysicalDeviceSurfaceCapabilitiesKHR(self.device_info.pdev, self.surface);
+        swapchain_support.formats = try self.vki.getPhysicalDeviceSurfaceFormatsAllocKHR(self.device_info.pdev, self.surface, tmp_allocator);
+        swapchain_support.modes = try self.vki.getPhysicalDeviceSurfacePresentModesAllocKHR(self.device_info.pdev, self.surface, tmp_allocator);
+        self.swapchain = try swpc.Swapchain(swapchain_max_frames).init(self, swapchain_support);
+        logger.info("Vulkan: swapchain successfully created with {d} frames", .{self.swapchain.image_count});
+
         return self;
     }
 
     pub fn deinit(self: VkContext) void {
+        self.swapchain.deinit(self);
+
         self.vkd.destroyDevice(self.dev, null);
         self.vki.destroySurfaceKHR(self.instance, self.surface, null);
         // TODO: deinit debugger messenger

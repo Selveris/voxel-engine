@@ -45,8 +45,8 @@ pub fn selectPhysicalDevice(allocator: std.mem.Allocator, context: ctx.VkContext
 
     for (pdevs) |pdev| {
         const properties = context.vki.getPhysicalDeviceProperties(pdev);
-        //        const features = context.vki.getPhysicalDeviceFeatures(pdev);
-        //        const memory = context.vki.getPhysicalDeviceMemoryProperties(pdev);
+        // const features = context.vki.getPhysicalDeviceFeatures(pdev);
+        // const memory = context.vki.getPhysicalDeviceMemoryProperties(pdev);
         logger.debug("Vulkan: checking physical device {s}", .{properties.device_name});
 
         const queues_properties = try context.vki.getPhysicalDeviceQueueFamilyPropertiesAlloc(pdev, allocator);
