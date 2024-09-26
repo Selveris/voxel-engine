@@ -32,9 +32,6 @@ pub const VkContext = struct {
 
     instance: vk.Instance,
     surface: vk.SurfaceKHR,
-    pdev: vk.PhysicalDevice,
-    props: vk.PhysicalDeviceProperties,
-    mem_props: vk.PhysicalDeviceMemoryProperties,
     debug_messenger: vk.DebugUtilsMessengerEXT,
 
     dev: vk.Device,
@@ -54,7 +51,6 @@ pub const VkContext = struct {
         const tmp_allocator = arena.allocator();
         var self: VkContext = undefined;
         self.vk_allocator = allocator;
-
         self.vkb = try vk_api.BaseDispatch.load(try sdl.vulkan.getVkGetInstanceProcAddr());
         self.instance = self.init_instance(tmp_allocator, app_name, display) catch |err| {
             logger.err("Vulkan: failed to initialize instance for app '{s}': {}", .{ app_name, err });
@@ -136,7 +132,8 @@ pub const VkContext = struct {
     }
 
     pub fn findMemoryTypeIndex(self: VkContext, memory_type_bits: u32, flags: vk.MemoryPropertyFlags) !u32 {
-        for (self.mem_props.memory_types[0..self.mem_props.memory_type_count], 0..) |mem_type, i| {
+        const props = self.device_info.mem_props;
+        for (props.memory_types[0..props.memory_type_count], 0..) |mem_type, i| {
             if (memory_type_bits & (@as(u32, 1) << @as(u5, @truncate(i))) != 0 and mem_type.property_flags.contains(flags)) {
                 return @as(u32, @truncate(i));
             }

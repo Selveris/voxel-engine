@@ -14,6 +14,7 @@ const device_optional_extensions = [_][*:0]const u8{};
 
 pub const DeviceError = error{
     NoSuitableDevice,
+    DepthFormatNotSupported,
 };
 
 pub fn getQueueCreateInfo(allocator: std.mem.Allocator, qinfo: QueueInfo) ![]vk.DeviceQueueCreateInfo {
@@ -46,9 +47,10 @@ pub fn selectPhysicalDevice(allocator: std.mem.Allocator, context: ctx.VkContext
     for (pdevs) |pdev| {
         const properties = context.vki.getPhysicalDeviceProperties(pdev);
         // const features = context.vki.getPhysicalDeviceFeatures(pdev);
-        // const memory = context.vki.getPhysicalDeviceMemoryProperties(pdev);
+        const memory = context.vki.getPhysicalDeviceMemoryProperties(pdev);
         logger.debug("Vulkan: checking physical device {s}", .{properties.device_name});
 
+        const depth_format = try select_depth_format(pdev, context);
         const queues_properties = try context.vki.getPhysicalDeviceQueueFamilyPropertiesAlloc(pdev, allocator);
         const queues_info = try constructQueuesInfo(allocator, pdev, queues_properties, context);
         const exts = try context.vki.enumerateDeviceExtensionPropertiesAlloc(pdev, null, allocator);
@@ -56,6 +58,8 @@ pub fn selectPhysicalDevice(allocator: std.mem.Allocator, context: ctx.VkContext
         var candidate: DeviceCandidate = .{
             .pdev = pdev,
             .props = properties,
+            .mem_props = memory,
+            .depth_format = depth_format,
             .exts = std.ArrayList([*:0]const u8).init(allocator),
             .queues = queues_info,
         };
@@ -71,6 +75,17 @@ pub fn selectPhysicalDevice(allocator: std.mem.Allocator, context: ctx.VkContext
     }
 
     return pickDeviceCandidate(candidates.items);
+}
+
+fn select_depth_format(pdev: vk.PhysicalDevice, context: ctx.VkContext) !vk.Format {
+    const candidates = [_]vk.Format{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint };
+    for (candidates) |candidate| {
+        const props = context.vki.getPhysicalDeviceFormatProperties(pdev, candidate);
+        if (props.linear_tiling_features.depth_stencil_attachment_bit or
+            props.optimal_tiling_features.depth_stencil_attachment_bit) return candidate;
+    }
+    logger.warn("Vulkan: no support depth format found on device", .{});
+    return DeviceError.DepthFormatNotSupported;
 }
 
 fn constructQueuesInfo(allocator: std.mem.Allocator, pdev: vk.PhysicalDevice, qprops: []vk.QueueFamilyProperties, context: ctx.VkContext) !QueueInfo {
@@ -161,6 +176,8 @@ const PhysicalDeviceRequirement = struct {
 pub const DeviceCandidate = struct {
     pdev: vk.PhysicalDevice,
     props: vk.PhysicalDeviceProperties,
+    mem_props: vk.PhysicalDeviceMemoryProperties,
+    depth_format: vk.Format,
     exts: std.ArrayList([*:0]const u8),
     queues: QueueInfo,
 };

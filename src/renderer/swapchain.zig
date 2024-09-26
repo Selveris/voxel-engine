@@ -2,6 +2,7 @@ const std = @import("std");
 const vk = @import("vulkan");
 
 const ctx = @import("context.zig");
+const img = @import("image.zig");
 
 const logger = std.log.scoped(.swapchain);
 
@@ -26,6 +27,7 @@ pub fn Swapchain(comptime max_frames: u32) type {
         min_extent: vk.Extent2D,
         max_extent: vk.Extent2D,
         image_count: u32,
+        depth_image: img.Image2D,
 
         pub fn init(context: ctx.VkContext, support: SwapchainSupport) !Swapchain(max_frames) {
             var swapchain: Swapchain(max_frames) = undefined;
@@ -149,25 +151,9 @@ pub fn Swapchain(comptime max_frames: u32) type {
             }
 
             for (0..self.image_count) |index| {
-                self.image_views[index] = try context.vkd.createImageView(context.dev, &.{
-                    .image = self.images[index],
-                    .view_type = .@"2d",
-                    .format = self.image_format.format,
-                    .components = .{
-                        .a = .identity,
-                        .b = .identity,
-                        .g = .identity,
-                        .r = .identity,
-                    },
-                    .subresource_range = .{
-                        .aspect_mask = .{ .color_bit = true },
-                        .base_mip_level = 0,
-                        .level_count = 1,
-                        .base_array_layer = 0,
-                        .layer_count = 1,
-                    },
-                }, context.vk_allocator);
+                self.image_views[index] = try img.createImageView(self.images[index], context, .@"2d", self.image_format.format, .{ .color_bit = true });
             }
+            self.depth_image = try img.Image2D.init(context, .{ .depth = 1, .height = extent.height, .width = extent.width }, context.device_info.depth_format, .optimal, .{ .depth_stencil_attachment_bit = true }, .{ .device_local_bit = true }, .{ .depth_bit = true });
         }
     };
 }
