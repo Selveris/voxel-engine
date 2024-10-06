@@ -7,6 +7,8 @@ const vk_api = @import("vulkan_api.zig");
 const window = @import("window.zig");
 const dev = @import("device.zig");
 const swpc = @import("swapchain.zig");
+const rndp = @import("renderpass.zig");
+const cmd = @import("command.zig");
 
 const logger = std.log.scoped(.context);
 
@@ -40,10 +42,13 @@ pub const VkContext = struct {
     present_queue: vk.Queue,
     compute_queue: vk.Queue,
     transfer_queue: vk.Queue,
+    graphics_cmd_pool: vk.CommandPool,
 
+    cmd_buffers: [swapchain_max_frames]cmd.CommandBuffer = undefined,
     swapchain: swpc.Swapchain(swapchain_max_frames),
     frame_width: u32,
     frame_height: u32,
+    main_renderpass: rndp.Renderpass,
 
     pub fn init(allocator: ?*const vk.AllocationCallbacks, app_name: [*:0]const u8, display: window.WindowDisplay) !VkContext {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -107,6 +112,9 @@ pub const VkContext = struct {
         }
         logger.info("Vulkan: queues handles successfully obtained", .{});
 
+        self.graphics_cmd_pool = try cmd.createGraphicsPool(self, self.device_info.queues.graphics_family.items[0]);
+        logger.info("Vulkan: graphic command pool successfully created", .{});
+
         var swapchain_support: swpc.SwapchainSupport = undefined;
         swapchain_support.capabilities = try self.vki.getPhysicalDeviceSurfaceCapabilitiesKHR(self.device_info.pdev, self.surface);
         swapchain_support.formats = try self.vki.getPhysicalDeviceSurfaceFormatsAllocKHR(self.device_info.pdev, self.surface, tmp_allocator);
@@ -114,16 +122,29 @@ pub const VkContext = struct {
         self.swapchain = try swpc.Swapchain(swapchain_max_frames).init(self, swapchain_support);
         logger.info("Vulkan: swapchain successfully created with {d} frames", .{self.swapchain.image_count});
 
+        for (&self.cmd_buffers) |*cmd_buffer| {
+            cmd_buffer.* = try cmd.CommandBuffer.init(self, self.graphics_cmd_pool, .primary);
+        }
+        logger.info("Vulkan: graphics command buffer successfully obtained", .{});
+
+        self.main_renderpass = try rndp.Renderpass.init(self, .{ .offset = .{ .x = 0, .y = 0 }, .extent = .{ .width = self.frame_width, .height = self.frame_height } }, .{ .inner = .{ 0.0, 0.0, 0.0, 1.0 } }, 1.0, 0);
+        logger.info("Vulkan: renderpass successfully created", .{});
+
         return self;
     }
 
-    pub fn deinit(self: VkContext) void {
+    pub fn deinit(self: *VkContext) void {
+        self.main_renderpass.deinit(self);
+        for (&self.cmd_buffers) |*cmd_buffer| {
+            cmd_buffer.deinit(self, self.graphics_cmd_pool);
+        }
         self.swapchain.deinit(self);
+        self.vkd.destroyCommandPool(self.dev, self.graphics_cmd_pool, self.vk_allocator);
 
-        self.vkd.destroyDevice(self.dev, null);
-        self.vki.destroySurfaceKHR(self.instance, self.surface, null);
+        self.vkd.destroyDevice(self.dev, self.vk_allocator);
+        self.vki.destroySurfaceKHR(self.instance, self.surface, self.vk_allocator);
         // TODO: deinit debugger messenger
-        self.vki.destroyInstance(self.instance, null);
+        self.vki.destroyInstance(self.instance, self.vk_allocator);
     }
 
     pub fn deviceName(self: VkContext) []const u8 {

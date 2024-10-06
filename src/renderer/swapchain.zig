@@ -50,7 +50,7 @@ pub fn Swapchain(comptime max_frames: u32) type {
             try _init(&swapchain, context);
             return swapchain;
         }
-        pub fn deinit(self: @This(), context: ctx.VkContext) void {
+        pub fn deinit(self: @This(), context: *ctx.VkContext) void {
             for (0..self.image_count) |index| {
                 context.vkd.destroyImageView(context.dev, self.image_views[index], context.vk_allocator);
             }

@@ -20,7 +20,7 @@ const App = struct {
         errdefer window.destroy();
 
         var sdl_display = display.SdlDisplay{ .window = window };
-        const context = try vk_context.VkContext.init(null, "Spoc", sdl_display.AsWindowDisplay());
+        var context = try vk_context.VkContext.init(null, "Spoc", sdl_display.AsWindowDisplay());
         errdefer context.deinit();
 
         const renderer = try sdl.createRenderer(window, null, .{ .accelerated = true });
