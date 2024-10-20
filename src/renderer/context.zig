@@ -10,6 +10,9 @@ const swpc = @import("swapchain.zig");
 const rndp = @import("renderpass.zig");
 const cmd = @import("command.zig");
 
+const Framebuffer = @import("framebuffer.zig").Framebuffer;
+const Fence = @import("sync.zig").Fence;
+
 const logger = std.log.scoped(.context);
 
 const optional_instance_extensions = [_][*:0]const u8{
@@ -45,10 +48,15 @@ pub const VkContext = struct {
     graphics_cmd_pool: vk.CommandPool,
 
     cmd_buffers: [swapchain_max_frames]cmd.CommandBuffer = undefined,
+    framebuffers: [swapchain_max_frames]Framebuffer = undefined,
     swapchain: swpc.Swapchain(swapchain_max_frames),
     frame_width: u32,
     frame_height: u32,
     main_renderpass: rndp.Renderpass,
+
+    image_available_semaphores: [swapchain_max_frames]vk.Semaphore,
+    queue_complete_semaphores: [swapchain_max_frames]vk.Semaphore,
+    in_flight_fences: [swapchain_max_frames]Fence,
 
     pub fn init(allocator: ?*const vk.AllocationCallbacks, app_name: [*:0]const u8, display: window.WindowDisplay) !VkContext {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -68,6 +76,8 @@ pub const VkContext = struct {
         errdefer self.vki.destroyInstance(self.instance, self.vk_allocator);
         logger.info("Vulkan: successfully initialized instance for app '{s}'", .{app_name});
 
+        self.frame_width = 920; // TODO: remove hard coding
+        self.frame_height = 680;
         self.surface = try display.create_surface(self.instance);
         errdefer self.vki.destroySurfaceKHR(self.instance, self.surface, self.vk_allocator);
 
@@ -122,18 +132,30 @@ pub const VkContext = struct {
         self.swapchain = try swpc.Swapchain(swapchain_max_frames).init(self, swapchain_support);
         logger.info("Vulkan: swapchain successfully created with {d} frames", .{self.swapchain.image_count});
 
+        self.main_renderpass = try rndp.Renderpass.init(self, .{ .offset = .{ .x = 0, .y = 0 }, .extent = .{ .width = self.frame_width, .height = self.frame_height } }, .{ .inner = .{ 0.0, 0.0, 0.0, 1.0 } }, 1.0, 0);
+        logger.info("Vulkan: renderpass successfully created", .{});
+
+        try self.regenerate_framebuffers();
+
         for (&self.cmd_buffers) |*cmd_buffer| {
             cmd_buffer.* = try cmd.CommandBuffer.init(self, self.graphics_cmd_pool, .primary);
         }
         logger.info("Vulkan: graphics command buffer successfully obtained", .{});
 
-        self.main_renderpass = try rndp.Renderpass.init(self, .{ .offset = .{ .x = 0, .y = 0 }, .extent = .{ .width = self.frame_width, .height = self.frame_height } }, .{ .inner = .{ 0.0, 0.0, 0.0, 1.0 } }, 1.0, 0);
-        logger.info("Vulkan: renderpass successfully created", .{});
+        for (0..self.swapchain.image_count) |i| {
+            const semaphore_create_info = vk.SemaphoreCreateInfo{};
+            self.image_available_semaphores[i] = try self.vkd.createSemaphore(self.dev, &semaphore_create_info, self.vk_allocator);
+            self.queue_complete_semaphores[i] = try self.vkd.createSemaphore(self.dev, &semaphore_create_info, self.vk_allocator);
+            self.in_flight_fences[i] = try Fence.init(self, true);
+        }
+        logger.info("Vulkan: sync objects successfully created", .{});
 
         return self;
     }
 
     pub fn deinit(self: *VkContext) void {
+        self.vkd.deviceWaitIdle(self.dev) catch {};
+
         self.main_renderpass.deinit(self);
         for (&self.cmd_buffers) |*cmd_buffer| {
             cmd_buffer.deinit(self, self.graphics_cmd_pool);
@@ -168,6 +190,23 @@ pub const VkContext = struct {
             .allocation_size = requirements.size,
             .memory_type_index = try self.findMemoryTypeIndex(requirements.memory_type_bits, flags),
         }, null);
+    }
+
+    pub fn regenerate_framebuffers(self: *VkContext) !void {
+        for (0..self.swapchain.image_count) |i| {
+            const attachments: [2]vk.ImageView = .{
+                self.swapchain.image_views[i],
+                self.swapchain.depth_image.view,
+            };
+            self.framebuffers[i] = try Framebuffer.init(
+                self.*,
+                self.main_renderpass,
+                attachments[0..2],
+                self.frame_width,
+                self.frame_height,
+            );
+        }
+        logger.debug("Vulkan: framebuffers successfully (re)generated", .{});
     }
 
     fn init_instance(self: *VkContext, tmp_allocator: std.mem.Allocator, app_name: [*:0]const u8, display: window.WindowDisplay) !vk.Instance {
